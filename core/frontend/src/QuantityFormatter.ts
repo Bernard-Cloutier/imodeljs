@@ -8,7 +8,7 @@
 
 import { BentleyError, BentleyStatus, BeUiEvent } from "@bentley/bentleyjs-core";
 import {
-  BadUnit, BasicUnit, Format, Formatter, FormatterSpec, Parser, ParseResult, ParserSpec, UnitConversion, UnitProps, UnitsProvider,
+  BadUnit, BasicUnit, Format, Formatter, FormatterSpec, Parser, ParseResult, ParserSpec, Quantity, UnitConversion, UnitConversionSpec, UnitProps, UnitsProvider,
 } from "@bentley/imodeljs-quantity";
 import { IModelApp } from "./IModelApp";
 
@@ -35,6 +35,22 @@ interface UnitDefinition {
   readonly altDisplayLabels: string[];
   readonly conversion: ConversionDef;
 }
+
+export interface CustomFormatter {
+  formatQuantity(magnitude: number, spec: FormatterSpec): string;
+  parseIntoQuantityValue(inString: string, spec: ParserSpec): ParseResult;
+}
+
+class CustomFormatterSpec extends FormatterSpec {
+  private _quantityType: QuantityType;
+  public get quantityType(): QuantityType { return this._quantityType; }
+  public constructor(quantityType: QuantityType, other: FormatterSpec) {
+    super(other.name, other.format, other.unitConversions);
+    this._quantityType = quantityType;
+  }
+}
+
+type CustomFormatterImpl<T extends CustomFormatter = CustomFormatter> = new () => T
 
 // cSpell:ignore MILLIINCH, MICROINCH, MILLIFOOT
 // Set of supported units - this information will come from Schema-based units once the EC package is ready to provide this information.
@@ -82,7 +98,52 @@ const unitData: UnitDefinition[] = [
 /** Defines standard format types for tools that need to display measurements to user.
  * @beta
  */
-export enum QuantityType { Length = 1, Angle = 2, Area = 3, Volume = 4, LatLong = 5, Coordinate = 6, Stationing = 7, LengthSurvey = 8, LengthEngineering = 9 }
+export const QuantityType = { Length: 1, Angle: 2, Area: 3, Volume: 4, LatLong: 5, Coordinate: 6, Stationing: 7, LengthSurvey: 8, LengthEngineering: 9 }
+export type QuantityType = (typeof QuantityType)[keyof typeof QuantityType] | string;
+
+// export enum QuantityType {
+//   Length = "Length",
+//   Angle = "Angle",
+//   Area = "Area",
+//   Volume = "Volume",
+//   LatLong = "LatLong",
+//   Coordinate = "Coordinate",
+//   Stationing = "Stationing",
+//   LengthSurvey = "LengthSurvey",
+//   LengthEngineering = "LengthEngineering"
+// }
+
+// const CustomQuantityType = {
+//   ...QuantityType,
+//   CustomType = "CustomType"
+// }
+
+// export interface QuantityType {
+//     toString(): string;
+// }
+
+// class QuantityTypeImpl implements QuantityType {
+//   private _typeName: string;
+//   public constructor(typeName: string) {
+//     this._typeName = typeName;
+//   }
+
+//   public toString() {
+//     return this._typeName;
+//   }
+// }
+
+// const QuantityTypes = [
+//   "Length",
+//   "Angle",
+//   "Area",
+//   "Volume",
+//   "LatLong",
+//   "Coordinate",
+//   "Stationing",
+//   "LengthSurvey",
+//   "LengthEngineering"
+// ].map((typeName) => { new QuantityTypeImpl(typeName); });
 
 // The following provide default formats for different the QuantityTypes. It is important to note that these default should reference
 // units that are available from the registered units provider.
@@ -411,6 +472,7 @@ export class QuantityFormatter implements UnitsProvider {
   protected _metricFormatSpecsByType = new Map<QuantityType, FormatterSpec>();
   protected _imperialParserSpecsByType = new Map<QuantityType, ParserSpec>();
   protected _metricUnitParserSpecsByType = new Map<QuantityType, ParserSpec>();
+  protected _customFormattersByType = new Map<QuantityType, CustomFormatterImpl>();
 
   /**
    * constructor
@@ -624,6 +686,10 @@ export class QuantityFormatter implements UnitsProvider {
     }
   }
 
+  // protected async getCustomFormatterSpec(type: QuantityType): Promise<FormatterSpec> {
+
+  // }
+
   /** Synchronous call to get a FormatterSpec of a QuantityType. If the FormatterSpec is not yet cached an undefined object is returned. The
    * cache is populated by the async call loadFormatSpecsForQuantityTypes.
    */
@@ -645,18 +711,29 @@ export class QuantityFormatter implements UnitsProvider {
    * @return A promise to return a FormatterSpec.
    */
   public async getFormatterSpecByQuantityType(type: QuantityType, imperial?: boolean): Promise<FormatterSpec> {
+    // if (this._customFormattersByType.has(type)) {
+    //   return this.getCustomFormatterSpec(type);
+    // }
+
+    let spec: FormatterSpec | undefined = undefined;
     const useImperial = undefined !== imperial ? imperial : this._activeSystemIsImperial;
     const activeMap = useImperial ? this._imperialFormatSpecsByType : this._metricFormatSpecsByType;
     if (activeMap.size > 0)
-      return activeMap.get(type) as FormatterSpec;
-
-    await this.loadFormatSpecsForQuantityTypes(useImperial);
-    if (activeMap.size > 0) {
-      const spec = activeMap.get(type);
-      if (spec)
-        return spec;
+      spec = activeMap.get(type);
+    else {
+      await this.loadFormatSpecsForQuantityTypes(useImperial);
+      if (activeMap.has(type)) {
+        spec = activeMap.get(type);
+      }
     }
-    throw new BentleyError(BentleyStatus.ERROR, "Unable to load FormatSpecs");
+    if (undefined === spec)
+      throw new BentleyError(BentleyStatus.ERROR, "Unable to load FormatSpecs");
+
+    // if a custom formatter has been defined for this quantity type, return a tagged FormatterSpec
+    if (this._customFormattersByType.has(type)) {
+      return new CustomFormatterSpec(type, spec as FormatterSpec);
+    }
+    return spec;
   }
 
   /** Synchronous call to get a ParserSpec for a QuantityType. If the ParserSpec is not yet cached an undefined object is returned. The
@@ -699,6 +776,12 @@ export class QuantityFormatter implements UnitsProvider {
    * @return the formatted string.
    */
   public formatQuantity(magnitude: number, formatSpec: FormatterSpec): string {
+    if (formatSpec instanceof CustomFormatterSpec) {
+      const formatterImpl = this._customFormattersByType.get((formatSpec as CustomFormatterSpec).quantityType) as CustomFormatterImpl;
+      const formatter = new formatterImpl();
+      return formatter.formatQuantity(magnitude, formatSpec);
+    }
+
     return Formatter.formatQuantity(magnitude, formatSpec);
   }
 
@@ -720,6 +803,18 @@ export class QuantityFormatter implements UnitsProvider {
     this.onActiveUnitSystemChanged.emit({ useImperial });
     if (IModelApp.toolAdmin)
       IModelApp.toolAdmin.startDefaultTool();
+  }
+
+  public registerFormatterForQuantityType(quantityType: QuantityType, formatter: CustomFormatterImpl, format?: Format): boolean {
+    if (format)
+      return false;
+
+    if (this._customFormattersByType.has(quantityType)) {
+      return false;
+    }
+
+    this._customFormattersByType.set(quantityType, formatter);
+    return true;
   }
 
   /** True if tool quantity values should be displayed in imperial units; false for metric. Changing this flag triggers an asynchronous request to refresh the cached formats. */

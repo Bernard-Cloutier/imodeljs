@@ -37,8 +37,21 @@ class MyNewFormatter implements CustomFormatter {
 // }
 
 describe("Quantity formatter", async () => {
-  let quantityFormatter = new QuantityFormatter();
-  await quantityFormatter.loadFormatAndParsingMaps(true);
+  let quantityFormatter: QuantityFormatter;
+  before(async () => {
+    quantityFormatter = new QuantityFormatter();
+    await quantityFormatter.loadFormatAndParsingMaps(true);
+  })
+
+  it("Throws when passing nonexistant quantity type.", async () => {
+    let hasThrown = false;
+    try {
+      await quantityFormatter.getFormatterSpecByQuantityType("Nonexistant type")
+    } catch (e) {
+      hasThrown = true;
+    }
+    assert.isTrue(hasThrown);
+  });
 
   it("Length", async () => {
     const expected = `405'-0 1/2"`;

@@ -50,7 +50,10 @@ class CustomFormatterSpec extends FormatterSpec {
   }
 }
 
-type CustomFormatterImpl<T extends CustomFormatter = CustomFormatter> = new () => T
+type CustomFormatterImpl<T extends CustomFormatter = CustomFormatter> = new () => T;
+
+type CustomFormatImpl = typeof Format;
+type CustomFormatPair = [CustomFormatImpl, { [value: string]: any }];
 
 // cSpell:ignore MILLIINCH, MICROINCH, MILLIFOOT
 // Set of supported units - this information will come from Schema-based units once the EC package is ready to provide this information.
@@ -416,6 +419,22 @@ const defaultsFormats = {
   ],
 };
 
+const defaultFormatProps = {
+  composite: {
+    includeZero: true,
+    spacer: " ",
+    units: [
+      {
+        label: "m",
+        name: "Units.M",
+      },
+    ],
+  },
+  formatTraits: ["keepSingleZero", "showUnitLabel"],
+  precision: 4,
+  type: "Decimal"
+}
+
 /** Formats quantity values into strings.
  * @alpha
  */
@@ -429,7 +448,7 @@ export class QuantityFormatter implements UnitsProvider {
   protected _imperialParserSpecsByType = new Map<QuantityType, ParserSpec>();
   protected _metricUnitParserSpecsByType = new Map<QuantityType, ParserSpec>();
   protected _customFormattersByType = new Map<QuantityType, CustomFormatterImpl>();
-  protected _customFormatsByType = new Map<QuantityType, Format>();
+  protected _customFormatsByType = new Map<QuantityType, CustomFormatPair>();
 
   /**
    * constructor
@@ -578,8 +597,12 @@ export class QuantityFormatter implements UnitsProvider {
   }
 
   protected async getFormatByQuantityType(type: QuantityType, imperial: boolean): Promise<Format> {
-    if (this._customFormatsByType.has(type))
-      return this._customFormatsByType.get(type) as Format;
+    if (this._customFormatsByType.has(type)) {
+      const [formatClass, jsonProps] = this._customFormatsByType.get(type) as CustomFormatPair;
+      const format: Format = new formatClass("customFormat");
+      format.fromJson(this, jsonProps);
+      return format;
+    }
 
     const activeMap = imperial ? this._imperialFormatsByType : this._metricFormatsByType;
 
@@ -646,10 +669,6 @@ export class QuantityFormatter implements UnitsProvider {
     }
   }
 
-  // protected async getCustomFormatterSpec(type: QuantityType): Promise<FormatterSpec> {
-
-  // }
-
   /** Synchronous call to get a FormatterSpec of a QuantityType. If the FormatterSpec is not yet cached an undefined object is returned. The
    * cache is populated by the async call loadFormatSpecsForQuantityTypes.
    */
@@ -692,10 +711,10 @@ export class QuantityFormatter implements UnitsProvider {
       spec = new CustomFormatterSpec(type, spec as FormatterSpec);
     }
 
-    if (undefined !== spec)
-      return spec;
+    if (undefined === spec)
+      throw new BentleyError(BentleyStatus.ERROR, "Unable to load FormatSpecs");
 
-    throw new BentleyError(BentleyStatus.ERROR, "Unable to load FormatSpecs");
+    return spec;
   }
 
   /** Synchronous call to get a ParserSpec for a QuantityType. If the ParserSpec is not yet cached an undefined object is returned. The
@@ -767,34 +786,25 @@ export class QuantityFormatter implements UnitsProvider {
       IModelApp.toolAdmin.startDefaultTool();
   }
 
-  public async registerCustomQuantityFormatter(quantityType: QuantityType, formatter: CustomFormatterImpl, suppliedFormat?: Format): Promise<boolean> {
-    if (!this._isStandardQuantityType(quantityType) && undefined === suppliedFormat) {
-      const format = new Format("customFormat");
-      await format.fromJson(this, {
-        composite: {
-          includeZero: true,
-          spacer: " ",
-          units: [
-            {
-              label: "m",
-              name: "Units.M",
-            },
-          ],
-        },
-        formatTraits: ["keepSingleZero", "showUnitLabel"],
-        precision: 4,
-        type: "Decimal",
-      });
-      this._customFormatsByType.set(quantityType, format);
-    }
-    else if (suppliedFormat) {
-      this._customFormatsByType.set(quantityType, suppliedFormat as Format);
-    }
+  public async registerCustomQuantityFormatter(quantityType: QuantityType, formatter: CustomFormatterImpl, suppliedFormat: CustomFormatImpl = Format, formatProps: any = defaultFormatProps): Promise<boolean> {
+    // Tries to create a Format object to validate formatProps
+    const format = new suppliedFormat("test");
+    // Will throw if invalid
+    await format.fromJson(this, formatProps);
+
+    // if (!this._isStandardQuantityType(quantityType) && undefined === suppliedFormat) {
+    //   // const format = new Format("customFormat");
+    //   // await format.fromJson(this, formatProps);
+    //   this._customFormatsByType.set(quantityType, [Format, formatProps]);
+    // }
+    // else if (suppliedFormat) {
+    // }
 
     if (this._customFormattersByType.has(quantityType)) {
       return false;
     }
 
+    this._customFormatsByType.set(quantityType, [suppliedFormat, formatProps]);
     this._customFormattersByType.set(quantityType, formatter);
     return true;
   }

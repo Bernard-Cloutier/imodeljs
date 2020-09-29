@@ -20,38 +20,75 @@ class MyNewFormatter implements CustomFormatter {
   }
 }
 
-// class MyNewFormat extends Format {
-//   private _myProp: string = "";
+class MyNewFormat extends Format {
+  private _myProp: string = "";
 
-//   public get MyProp(): string { return this._myProp; };
+  public get myProp(): string { return this._myProp; };
 
-//   public async fromJson(unitsProvider: UnitsProvider, jsonObj: any): Promise<void> {
-//     super.fromJson(unitsProvider, jsonObj);
+  // tslint:disable-next-line:no-unused-variable
+  protected async fromJsonHook(unitsProvider: UnitsProvider, jsonObj: any): Promise<void> {
+    if (undefined !== jsonObj.MyProp) {
+      if (typeof (jsonObj.MyProp) !== "string") // MyProp must be a string IF it is defined
+        throw new QuantityError(QuantityStatus.InvalidJson, `The Format ${this.name} has an invalid 'MyProp' attribute. It should be of type 'string'.`);
+      this._myProp = jsonObj.MyProp;
+    }
+  }
 
-//     if (undefined !== jsonObj.MyProp) {
-//       if (typeof (jsonObj.MyProp) !== "string") // MyProp must be a string IF it is defined
-//         throw new QuantityError(QuantityStatus.InvalidJson, `The Format ${this.name} has an invalid 'MyProp' attribute. It should be of type 'string'.`);
-//       this._myProp = jsonObj.MyProp;
-//     }
-//   }
-// }
+  protected toJsonHook(schemaJson: any) {
+    schemaJson.MyProp = this.myProp;
+    return schemaJson;
+  }
+}
+
+const defaultFormatProps = {
+  composite: {
+    includeZero: true,
+    spacer: " ",
+    units: [
+      {
+        label: "m",
+        name: "Units.M",
+      },
+    ],
+  },
+  formatTraits: ["keepSingleZero", "showUnitLabel"],
+  precision: 4,
+  type: "Decimal"
+}
+
+const invalidFormatProps = {
+  composite: {
+    includeZero: "invalid",
+  }
+}
 
 describe("Quantity formatter", async () => {
   let quantityFormatter: QuantityFormatter;
-  before(async () => {
+  beforeEach(async () => {
     quantityFormatter = new QuantityFormatter();
     await quantityFormatter.loadFormatAndParsingMaps(true);
   })
 
-  it("Throws when passing nonexistant quantity type.", async () => {
+  it("Throws when passing invalid quantity type.", async () => {
     let hasThrown = false;
     try {
-      await quantityFormatter.getFormatterSpecByQuantityType("Nonexistant type")
+      await quantityFormatter.getFormatterSpecByQuantityType("invalid type");
     } catch (e) {
       hasThrown = true;
     }
     assert.isTrue(hasThrown);
   });
+
+  it("Throws when registering formatter with invalid format properties.", async () => {
+    let hasThrown = false;
+    try {
+      await quantityFormatter.registerCustomQuantityFormatter("newQuantityType", MyNewFormatter, MyNewFormat, invalidFormatProps);
+    } catch (e) {
+      hasThrown = true;
+    }
+    assert.isTrue(hasThrown);
+  });
+
 
   it("Length", async () => {
     const expected = `405'-0 1/2"`;
@@ -61,7 +98,7 @@ describe("Quantity formatter", async () => {
     assert.equal(actual, expected);
   });
 
-  it("Registering new formatter returns correct formatter spec", async () => {
+  it("Registering new formatter and no format", async () => {
     const expected = "MyNewFormatter";
     const isRegisterSuccesful = await quantityFormatter.registerCustomQuantityFormatter("newQuantityType", MyNewFormatter);
     assert.isTrue(isRegisterSuccesful);
@@ -69,5 +106,17 @@ describe("Quantity formatter", async () => {
 
     const actual = quantityFormatter.formatQuantity(0, newFormatterSpec);
     assert.equal(actual, expected);
+  });
+
+  it("Registering new formatter with custom format returns correct format", async () => {
+    const expected = "MyCustomProperty";
+    const jsonProps = {
+      ...defaultFormatProps,
+      MyProp: expected
+    };
+    const isRegisterSuccesful = await quantityFormatter.registerCustomQuantityFormatter("newQuantityType", MyNewFormatter, MyNewFormat, jsonProps);
+    assert.isTrue(isRegisterSuccesful);
+    let newFormatterSpec = await quantityFormatter.getFormatterSpecByQuantityType("newQuantityType");
+    assert.equal((newFormatterSpec.format as MyNewFormat).myProp, expected);
   });
 });

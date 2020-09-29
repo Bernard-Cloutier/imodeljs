@@ -101,50 +101,6 @@ const unitData: UnitDefinition[] = [
 export const QuantityType = { Length: 1, Angle: 2, Area: 3, Volume: 4, LatLong: 5, Coordinate: 6, Stationing: 7, LengthSurvey: 8, LengthEngineering: 9 }
 export type QuantityType = (typeof QuantityType)[keyof typeof QuantityType] | string;
 
-// export enum QuantityType {
-//   Length = "Length",
-//   Angle = "Angle",
-//   Area = "Area",
-//   Volume = "Volume",
-//   LatLong = "LatLong",
-//   Coordinate = "Coordinate",
-//   Stationing = "Stationing",
-//   LengthSurvey = "LengthSurvey",
-//   LengthEngineering = "LengthEngineering"
-// }
-
-// const CustomQuantityType = {
-//   ...QuantityType,
-//   CustomType = "CustomType"
-// }
-
-// export interface QuantityType {
-//     toString(): string;
-// }
-
-// class QuantityTypeImpl implements QuantityType {
-//   private _typeName: string;
-//   public constructor(typeName: string) {
-//     this._typeName = typeName;
-//   }
-
-//   public toString() {
-//     return this._typeName;
-//   }
-// }
-
-// const QuantityTypes = [
-//   "Length",
-//   "Angle",
-//   "Area",
-//   "Volume",
-//   "LatLong",
-//   "Coordinate",
-//   "Stationing",
-//   "LengthSurvey",
-//   "LengthEngineering"
-// ].map((typeName) => { new QuantityTypeImpl(typeName); });
-
 // The following provide default formats for different the QuantityTypes. It is important to note that these default should reference
 // units that are available from the registered units provider.
 const defaultsFormats = {
@@ -733,8 +689,11 @@ export class QuantityFormatter implements UnitsProvider {
       const [format, unit] = await Promise.all([formatPromise, unitPromise]);
       spec = await FormatterSpec.create(format.name, format, this, unit);
       // if a custom formatter has been defined for this quantity type, return a tagged FormatterSpec
-      return new CustomFormatterSpec(type, spec as FormatterSpec);
+      spec = new CustomFormatterSpec(type, spec as FormatterSpec);
     }
+
+    if (undefined !== spec)
+      return spec;
 
     throw new BentleyError(BentleyStatus.ERROR, "Unable to load FormatSpecs");
   }

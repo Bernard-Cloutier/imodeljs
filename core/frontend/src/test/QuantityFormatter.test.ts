@@ -1,3 +1,8 @@
+/*---------------------------------------------------------------------------------------------
+* Copyright (c) Bentley Systems, Incorporated. All rights reserved.
+* See LICENSE.md in the project root for license terms and full copyright notice.
+*--------------------------------------------------------------------------------------------*/
+
 import { assert } from "chai";
 import { Format, FormatterSpec, ParseResult, ParserSpec, Quantity, QuantityError, QuantityStatus, UnitsProvider } from "@bentley/imodeljs-quantity";
 import { QuantityFormatter, CustomFormatter, QuantityType } from "../QuantityFormatter";
@@ -60,13 +65,10 @@ describe("Registering new formatter returns correct formatter spec", () => {
     const isRegisterSuccesful = quantityFormatter.registerFormatterForQuantityType("newQuantityType", MyNewFormatter);
     assert.isTrue(isRegisterSuccesful);
     let newFormatterSpec = await quantityFormatter.getFormatterSpecByQuantityType("newQuantityType");
+
+    // assert.equal((newFormatterSpec as any)["_quantityType"], "newQuantityType");
+
     const actual = quantityFormatter.formatQuantity(0, newFormatterSpec);
     assert.equal(actual, expected);
-  });
-});
-
-describe("Failing test", () => {
-  it("test2", () => {
-    assert.fail();
   });
 });

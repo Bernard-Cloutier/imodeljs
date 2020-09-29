@@ -36,11 +36,20 @@ class MyNewFormatter implements CustomFormatter {
 //   }
 // }
 
+describe("Quantity formatter", async () => {
+  let quantityFormatter = new QuantityFormatter();
+  await quantityFormatter.loadFormatAndParsingMaps(true);
 
-describe("Registering new formatter returns correct formatter spec", () => {
-  it("test1", async () => {
+  it("Length", async () => {
+    const expected = `405'-0 1/2"`;
+    let newFormatterSpec = await quantityFormatter.getFormatterSpecByQuantityType(QuantityType.Length);
+
+    const actual = quantityFormatter.formatQuantity(123.456, newFormatterSpec);
+    assert.equal(actual, expected);
+  });
+
+  it("Registering new formatter returns correct formatter spec", async () => {
     const expected = "MyNewFormatter";
-    let quantityFormatter = new QuantityFormatter();
     const isRegisterSuccesful = await quantityFormatter.registerCustomQuantityFormatter("newQuantityType", MyNewFormatter);
     assert.isTrue(isRegisterSuccesful);
     let newFormatterSpec = await quantityFormatter.getFormatterSpecByQuantityType("newQuantityType");

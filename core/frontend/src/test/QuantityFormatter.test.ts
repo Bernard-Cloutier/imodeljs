@@ -41,7 +41,7 @@ describe("Registering new formatter returns correct formatter spec", () => {
   it("test1", async () => {
     const expected = "MyNewFormatter";
     let quantityFormatter = new QuantityFormatter();
-    const isRegisterSuccesful = await quantityFormatter.registerFormatterForQuantityType("newQuantityType", MyNewFormatter);
+    const isRegisterSuccesful = await quantityFormatter.registerCustomQuantityFormatter("newQuantityType", MyNewFormatter);
     assert.isTrue(isRegisterSuccesful);
     let newFormatterSpec = await quantityFormatter.getFormatterSpecByQuantityType("newQuantityType");
 

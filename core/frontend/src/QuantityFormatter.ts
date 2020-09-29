@@ -808,7 +808,7 @@ export class QuantityFormatter implements UnitsProvider {
       IModelApp.toolAdmin.startDefaultTool();
   }
 
-  public async registerFormatterForQuantityType(quantityType: QuantityType, formatter: CustomFormatterImpl, suppliedFormat?: Format): Promise<boolean> {
+  public async registerCustomQuantityFormatter(quantityType: QuantityType, formatter: CustomFormatterImpl, suppliedFormat?: Format): Promise<boolean> {
     if (!this._isStandardQuantityType(quantityType) && undefined === suppliedFormat) {
       const format = new Format("customFormat");
       await format.fromJson(this, {

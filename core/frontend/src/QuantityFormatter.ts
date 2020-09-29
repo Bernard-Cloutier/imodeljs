@@ -473,6 +473,7 @@ export class QuantityFormatter implements UnitsProvider {
   protected _imperialParserSpecsByType = new Map<QuantityType, ParserSpec>();
   protected _metricUnitParserSpecsByType = new Map<QuantityType, ParserSpec>();
   protected _customFormattersByType = new Map<QuantityType, CustomFormatterImpl>();
+  protected _customFormatsByType = new Map<QuantityType, Format>();
 
   /**
    * constructor
@@ -621,6 +622,9 @@ export class QuantityFormatter implements UnitsProvider {
   }
 
   protected async getFormatByQuantityType(type: QuantityType, imperial: boolean): Promise<Format> {
+    if (this._customFormatsByType.has(type))
+      return this._customFormatsByType.get(type) as Format;
+
     const activeMap = imperial ? this._imperialFormatsByType : this._metricFormatsByType;
 
     let format = activeMap.get(type);
@@ -711,10 +715,6 @@ export class QuantityFormatter implements UnitsProvider {
    * @return A promise to return a FormatterSpec.
    */
   public async getFormatterSpecByQuantityType(type: QuantityType, imperial?: boolean): Promise<FormatterSpec> {
-    // if (this._customFormattersByType.has(type)) {
-    //   return this.getCustomFormatterSpec(type);
-    // }
-
     let spec: FormatterSpec | undefined = undefined;
     const useImperial = undefined !== imperial ? imperial : this._activeSystemIsImperial;
     const activeMap = useImperial ? this._imperialFormatSpecsByType : this._metricFormatSpecsByType;
@@ -726,14 +726,17 @@ export class QuantityFormatter implements UnitsProvider {
         spec = activeMap.get(type);
       }
     }
-    if (undefined === spec)
-      throw new BentleyError(BentleyStatus.ERROR, "Unable to load FormatSpecs");
 
-    // if a custom formatter has been defined for this quantity type, return a tagged FormatterSpec
     if (this._customFormattersByType.has(type)) {
+      const formatPromise = this.getFormatByQuantityType(type, useImperial);
+      const unitPromise = this.getUnitByQuantityType(type);
+      const [format, unit] = await Promise.all([formatPromise, unitPromise]);
+      spec = await FormatterSpec.create(format.name, format, this, unit);
+      // if a custom formatter has been defined for this quantity type, return a tagged FormatterSpec
       return new CustomFormatterSpec(type, spec as FormatterSpec);
     }
-    return spec;
+
+    throw new BentleyError(BentleyStatus.ERROR, "Unable to load FormatSpecs");
   }
 
   /** Synchronous call to get a ParserSpec for a QuantityType. If the ParserSpec is not yet cached an undefined object is returned. The
@@ -805,9 +808,29 @@ export class QuantityFormatter implements UnitsProvider {
       IModelApp.toolAdmin.startDefaultTool();
   }
 
-  public registerFormatterForQuantityType(quantityType: QuantityType, formatter: CustomFormatterImpl, format?: Format): boolean {
-    if (format)
-      return false;
+  public async registerFormatterForQuantityType(quantityType: QuantityType, formatter: CustomFormatterImpl, suppliedFormat?: Format): Promise<boolean> {
+    if (!this._isStandardQuantityType(quantityType) && undefined === suppliedFormat) {
+      const format = new Format("customFormat");
+      await format.fromJson(this, {
+        composite: {
+          includeZero: true,
+          spacer: " ",
+          units: [
+            {
+              label: "m",
+              name: "Units.M",
+            },
+          ],
+        },
+        formatTraits: ["keepSingleZero", "showUnitLabel"],
+        precision: 4,
+        type: "Decimal",
+      });
+      this._customFormatsByType.set(quantityType, format);
+    }
+    else if (suppliedFormat) {
+      this._customFormatsByType.set(quantityType, suppliedFormat as Format);
+    }
 
     if (this._customFormattersByType.has(quantityType)) {
       return false;
@@ -824,5 +847,9 @@ export class QuantityFormatter implements UnitsProvider {
       return;
 
     this.loadFormatAndParsingMaps(useImperial); // eslint-disable-line @typescript-eslint/no-floating-promises
+  }
+
+  private _isStandardQuantityType(type: QuantityType): boolean {
+    return Object.keys(QuantityType).some((key) => (QuantityType as any)[key] === type);
   }
 }

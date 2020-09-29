@@ -9,9 +9,9 @@ import { QuantityFormatter, CustomFormatter, QuantityType } from "../QuantityFor
 
 class MyNewFormatter implements CustomFormatter {
   formatQuantity(magnitude: number, spec: FormatterSpec): string {
-    if (magnitude && spec) // avoid unused variable error
+    if (undefined !== magnitude && undefined !== spec) // avoid unused variable error
       return "MyNewFormatter";
-    return "shouldnt get here";
+    return "shouldnt get here: spec is undefined: " + (undefined !== spec);
   }
   parseIntoQuantityValue(inString: string, spec: ParserSpec): ParseResult {
     if (inString && spec) // avoid unused variable error
@@ -19,17 +19,6 @@ class MyNewFormatter implements CustomFormatter {
     throw new Error("Method not implemented.");
   }
 }
-
-// class MyNewFormatterSpec extends FormatterSpec {
-//   private _myProp: string;
-
-//   public get MyProp(): string { return this._myProp; };
-
-//   public constructor(myprop: string, other: FormatterSpec) {
-//     super(other.name, other.format, other.unitConversions);
-//     this._myProp = myprop;
-//   }
-// }
 
 // class MyNewFormat extends Format {
 //   private _myProp: string = "";
@@ -47,26 +36,14 @@ class MyNewFormatter implements CustomFormatter {
 //   }
 // }
 
-// describe("test", () => {
-//   it("", () => {
-//     let quantityFormatter = new QuantityFormatter();
-//     quantityFormatter.registerFormatterForQuantityType("newQuantityType", MyNewFormatter);
-//     let newFormatterSpec = quantityFormatter.getFormatterSpecByQuantityType("newQuantityType"); // needs to return specialized formatterSpec
-//     quantityFormatter.formatQuantity(123, formatterSpec); // uses an instance of MyNewFormatter
-//     let angleFormatterSpec = quantityFormatter.getFormatterSpecByQuantityType(QuantityType.Angle);
-//     quantityFormatter.formatQuantity(123, angleFormatterSpec); // uses default formatter
-//   });
-// });
 
 describe("Registering new formatter returns correct formatter spec", () => {
   it("test1", async () => {
     const expected = "MyNewFormatter";
     let quantityFormatter = new QuantityFormatter();
-    const isRegisterSuccesful = quantityFormatter.registerFormatterForQuantityType("newQuantityType", MyNewFormatter);
+    const isRegisterSuccesful = await quantityFormatter.registerFormatterForQuantityType("newQuantityType", MyNewFormatter);
     assert.isTrue(isRegisterSuccesful);
     let newFormatterSpec = await quantityFormatter.getFormatterSpecByQuantityType("newQuantityType");
-
-    // assert.equal((newFormatterSpec as any)["_quantityType"], "newQuantityType");
 
     const actual = quantityFormatter.formatQuantity(0, newFormatterSpec);
     assert.equal(actual, expected);

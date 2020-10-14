@@ -418,8 +418,7 @@ export class Format implements FormatProps {
     await this.fromJsonHook(unitsProvider, jsonObj);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  protected async fromJsonHook(unitsProvider: UnitsProvider, jsonObj: any): Promise<void> { };
+  protected async fromJsonHook(_unitsProvider: UnitsProvider, _jsonObj: any): Promise<void> { };
 
   /**
    * Returns a JSON object that contain the specification for this Format.

@@ -8,7 +8,7 @@
 
 import { BentleyError, BentleyStatus, BeUiEvent } from "@bentley/bentleyjs-core";
 import {
-  BadUnit, BasicUnit, Format, Formatter, FormatterSpec, Parser, ParseResult, ParserSpec, Quantity, UnitConversion, UnitConversionSpec, UnitProps, UnitsProvider,
+  BadUnit, BasicUnit, Format, Formatter, FormatterSpec, Parser, ParseResult, ParserSpec, UnitConversion, UnitProps, UnitsProvider,
 } from "@bentley/imodeljs-quantity";
 import { IModelApp } from "./IModelApp";
 
@@ -101,6 +101,7 @@ const unitData: UnitDefinition[] = [
 /** Defines standard format types for tools that need to display measurements to user.
  * @beta
  */
+// eslint-disable-next-line @typescript-eslint/naming-convention
 export const QuantityType = { Length: 1, Angle: 2, Area: 3, Volume: 4, LatLong: 5, Coordinate: 6, Stationing: 7, LengthSurvey: 8, LengthEngineering: 9 }
 export type QuantityType = (typeof QuantityType)[keyof typeof QuantityType] | string;
 
@@ -432,7 +433,7 @@ const defaultFormatProps = {
   },
   formatTraits: ["keepSingleZero", "showUnitLabel"],
   precision: 4,
-  type: "Decimal"
+  type: "Decimal",
 }
 
 /** Formats quantity values into strings.
@@ -599,9 +600,9 @@ export class QuantityFormatter implements UnitsProvider {
   protected async getFormatByQuantityType(type: QuantityType, imperial: boolean): Promise<Format> {
     if (this._customFormatsByType.has(type)) {
       const [formatClass, jsonProps] = this._customFormatsByType.get(type) as CustomFormatPair;
-      const format: Format = new formatClass("customFormat");
-      format.fromJson(this, jsonProps);
-      return format;
+      const _format: Format = new formatClass("customFormat");
+      await _format.fromJson(this, jsonProps);
+      return _format;
     }
 
     const activeMap = imperial ? this._imperialFormatsByType : this._metricFormatsByType;
@@ -669,6 +670,36 @@ export class QuantityFormatter implements UnitsProvider {
     }
   }
 
+  protected async _getStandardFormatterSpec(type: QuantityType, useImperial: boolean): Promise<FormatterSpec> {
+    let spec: FormatterSpec | undefined;
+    const activeMap = useImperial ? this._imperialFormatSpecsByType : this._metricFormatSpecsByType;
+    if (activeMap.size > 0)
+      spec = activeMap.get(type);
+    else {
+      await this.loadFormatSpecsForQuantityTypes(useImperial);
+      if (activeMap.has(type)) {
+        spec = activeMap.get(type);
+      }
+    }
+
+    if (undefined === spec) {
+      throw new BentleyError(BentleyStatus.ERROR, "Unable to load FormatSpecs");
+    }
+
+    return spec;
+  }
+
+  protected async _getCustomFormatterSpec(type: QuantityType, useImperial: boolean) {
+    const formatPromise = this.getFormatByQuantityType(type, useImperial);
+    const unitPromise = this.getUnitByQuantityType(type);
+    const [format, unit] = await Promise.all([formatPromise, unitPromise]);
+    let spec = await FormatterSpec.create(format.name, format, this, unit);
+    // if a custom formatter has been defined for this quantity type, return a tagged FormatterSpec
+    spec = new CustomFormatterSpec(type, spec);
+    // TODO: cache custom formatter spec
+    return spec;
+  }
+
   /** Synchronous call to get a FormatterSpec of a QuantityType. If the FormatterSpec is not yet cached an undefined object is returned. The
    * cache is populated by the async call loadFormatSpecsForQuantityTypes.
    */
@@ -690,31 +721,15 @@ export class QuantityFormatter implements UnitsProvider {
    * @return A promise to return a FormatterSpec.
    */
   public async getFormatterSpecByQuantityType(type: QuantityType, imperial?: boolean): Promise<FormatterSpec> {
-    let spec: FormatterSpec | undefined = undefined;
     const useImperial = undefined !== imperial ? imperial : this._activeSystemIsImperial;
-    const activeMap = useImperial ? this._imperialFormatSpecsByType : this._metricFormatSpecsByType;
-    if (activeMap.size > 0)
-      spec = activeMap.get(type);
-    else {
-      await this.loadFormatSpecsForQuantityTypes(useImperial);
-      if (activeMap.has(type)) {
-        spec = activeMap.get(type);
-      }
+
+    if (this._isStandardQuantityType(type)) {
+      return this._getStandardFormatterSpec(type, useImperial)
+    } else if (this._customFormattersByType.has(type)) {
+      return this._getCustomFormatterSpec(type, useImperial)
     }
 
-    if (this._customFormattersByType.has(type)) {
-      const formatPromise = this.getFormatByQuantityType(type, useImperial);
-      const unitPromise = this.getUnitByQuantityType(type);
-      const [format, unit] = await Promise.all([formatPromise, unitPromise]);
-      spec = await FormatterSpec.create(format.name, format, this, unit);
-      // if a custom formatter has been defined for this quantity type, return a tagged FormatterSpec
-      spec = new CustomFormatterSpec(type, spec as FormatterSpec);
-    }
-
-    if (undefined === spec)
-      throw new BentleyError(BentleyStatus.ERROR, "Unable to load FormatSpecs");
-
-    return spec;
+    throw new BentleyError(BentleyStatus.ERROR, "Unable to load FormatSpecs");
   }
 
   /** Synchronous call to get a ParserSpec for a QuantityType. If the ParserSpec is not yet cached an undefined object is returned. The
@@ -758,7 +773,7 @@ export class QuantityFormatter implements UnitsProvider {
    */
   public formatQuantity(magnitude: number, formatSpec: FormatterSpec): string {
     if (formatSpec instanceof CustomFormatterSpec) {
-      const formatterImpl = this._customFormattersByType.get((formatSpec as CustomFormatterSpec).quantityType) as CustomFormatterImpl;
+      const formatterImpl = this._customFormattersByType.get(formatSpec.quantityType) as CustomFormatterImpl;
       const formatter = new formatterImpl();
       return formatter.formatQuantity(magnitude, formatSpec);
     }
@@ -786,26 +801,25 @@ export class QuantityFormatter implements UnitsProvider {
       IModelApp.toolAdmin.startDefaultTool();
   }
 
-  public async registerCustomQuantityFormatter(quantityType: QuantityType, formatter: CustomFormatterImpl, suppliedFormat: CustomFormatImpl = Format, formatProps: any = defaultFormatProps): Promise<boolean> {
+  /** Registers a custom quantity type and a corresponding custom formatter.
+   * @param customQuantityType    The name of the custom quantity type. Please prefix with your extension name.
+   * @param formatter             The custom formatter class that will handle the given custom quantity type.
+   * @param suppliedFormat        Optional custom Format class for the given custom quantity type.
+   * @param formatProps           Optional format properties to initialize custom Format objects
+   * @return ParseResult object containing either the parsed value or an error value if unsuccessful.
+   */
+  public async registerCustomQuantityFormatter(customQuantityType: string, formatter: CustomFormatterImpl, suppliedFormat: CustomFormatImpl = Format, formatProps: any = defaultFormatProps): Promise<boolean> {
     // Tries to create a Format object to validate formatProps
     const format = new suppliedFormat("test");
     // Will throw if invalid
     await format.fromJson(this, formatProps);
 
-    // if (!this._isStandardQuantityType(quantityType) && undefined === suppliedFormat) {
-    //   // const format = new Format("customFormat");
-    //   // await format.fromJson(this, formatProps);
-    //   this._customFormatsByType.set(quantityType, [Format, formatProps]);
-    // }
-    // else if (suppliedFormat) {
-    // }
-
-    if (this._customFormattersByType.has(quantityType)) {
+    if (this._customFormattersByType.has(customQuantityType)) {
       return false;
     }
 
-    this._customFormatsByType.set(quantityType, [suppliedFormat, formatProps]);
-    this._customFormattersByType.set(quantityType, formatter);
+    this._customFormatsByType.set(customQuantityType, [suppliedFormat, formatProps]);
+    this._customFormattersByType.set(customQuantityType, formatter);
     return true;
   }
 

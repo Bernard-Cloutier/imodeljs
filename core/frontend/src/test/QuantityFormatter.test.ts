@@ -4,18 +4,16 @@
 *--------------------------------------------------------------------------------------------*/
 
 import { assert } from "chai";
-import { Format, FormatterSpec, ParseResult, ParserSpec, Quantity, QuantityError, QuantityStatus, UnitsProvider } from "@bentley/imodeljs-quantity";
-import { QuantityFormatter, CustomFormatter, QuantityType } from "../QuantityFormatter";
+import { Format, FormatterSpec, ParseResult, ParserSpec, QuantityError, QuantityStatus, UnitsProvider } from "@bentley/imodeljs-quantity";
+import { CustomFormatter, QuantityFormatter, QuantityType } from "../QuantityFormatter";
 
 class MyNewFormatter implements CustomFormatter {
-  formatQuantity(magnitude: number, spec: FormatterSpec): string {
-    if (undefined !== magnitude && undefined !== spec) // avoid unused variable error
+  public formatQuantity(_magnitude: number, spec: FormatterSpec): string {
+    if (undefined !== spec)
       return "MyNewFormatter";
-    return "shouldnt get here: spec is undefined: " + (undefined !== spec);
+    return `shouldnt get here: spec is undefined: ${undefined !== spec}`;
   }
-  parseIntoQuantityValue(inString: string, spec: ParserSpec): ParseResult {
-    if (inString && spec) // avoid unused variable error
-      throw new Error("Method not implemented.");
+  public parseIntoQuantityValue(_inString: string, _spec: ParserSpec): ParseResult {
     throw new Error("Method not implemented.");
   }
 }
@@ -25,17 +23,16 @@ class MyNewFormat extends Format {
 
   public get myProp(): string { return this._myProp; };
 
-  // tslint:disable-next-line:no-unused-variable
-  protected async fromJsonHook(unitsProvider: UnitsProvider, jsonObj: any): Promise<void> {
-    if (undefined !== jsonObj.MyProp) {
-      if (typeof (jsonObj.MyProp) !== "string") // MyProp must be a string IF it is defined
+  protected async fromJsonHook(_unitsProvider: UnitsProvider, jsonObj: any): Promise<void> {
+    if (undefined !== jsonObj.myProp) {
+      if (typeof (jsonObj.myProp) !== "string") // MyProp must be a string IF it is defined
         throw new QuantityError(QuantityStatus.InvalidJson, `The Format ${this.name} has an invalid 'MyProp' attribute. It should be of type 'string'.`);
-      this._myProp = jsonObj.MyProp;
+      this._myProp = jsonObj.myProp;
     }
   }
 
   protected toJsonHook(schemaJson: any) {
-    schemaJson.MyProp = this.myProp;
+    schemaJson.myProp = this.myProp;
     return schemaJson;
   }
 }
@@ -53,13 +50,13 @@ const defaultFormatProps = {
   },
   formatTraits: ["keepSingleZero", "showUnitLabel"],
   precision: 4,
-  type: "Decimal"
+  type: "Decimal",
 }
 
 const invalidFormatProps = {
   composite: {
     includeZero: "invalid",
-  }
+  },
 }
 
 describe("Quantity formatter", async () => {
@@ -92,7 +89,7 @@ describe("Quantity formatter", async () => {
 
   it("Length", async () => {
     const expected = `405'-0 1/2"`;
-    let newFormatterSpec = await quantityFormatter.getFormatterSpecByQuantityType(QuantityType.Length);
+    const newFormatterSpec = await quantityFormatter.getFormatterSpecByQuantityType(QuantityType.Length);
 
     const actual = quantityFormatter.formatQuantity(123.456, newFormatterSpec);
     assert.equal(actual, expected);
@@ -102,7 +99,7 @@ describe("Quantity formatter", async () => {
     const expected = "MyNewFormatter";
     const isRegisterSuccesful = await quantityFormatter.registerCustomQuantityFormatter("newQuantityType", MyNewFormatter);
     assert.isTrue(isRegisterSuccesful);
-    let newFormatterSpec = await quantityFormatter.getFormatterSpecByQuantityType("newQuantityType");
+    const newFormatterSpec = await quantityFormatter.getFormatterSpecByQuantityType("newQuantityType");
 
     const actual = quantityFormatter.formatQuantity(0, newFormatterSpec);
     assert.equal(actual, expected);
@@ -112,11 +109,11 @@ describe("Quantity formatter", async () => {
     const expected = "MyCustomProperty";
     const jsonProps = {
       ...defaultFormatProps,
-      MyProp: expected
+      myProp: expected,
     };
     const isRegisterSuccesful = await quantityFormatter.registerCustomQuantityFormatter("newQuantityType", MyNewFormatter, MyNewFormat, jsonProps);
     assert.isTrue(isRegisterSuccesful);
-    let newFormatterSpec = await quantityFormatter.getFormatterSpecByQuantityType("newQuantityType");
+    const newFormatterSpec = await quantityFormatter.getFormatterSpecByQuantityType("newQuantityType");
     assert.equal((newFormatterSpec.format as MyNewFormat).myProp, expected);
   });
 });

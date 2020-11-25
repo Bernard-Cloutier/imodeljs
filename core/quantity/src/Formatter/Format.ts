@@ -415,10 +415,10 @@ export class Format implements FormatProps {
         throw new QuantityError(QuantityStatus.InvalidJson, `The Format ${this.name} has a Composite with no valid 'units'`);
     }
 
-    await this.fromJsonHook(unitsProvider, jsonObj);
+    await this.loadCustomPropsFromJson(unitsProvider, jsonObj);
   }
 
-  protected async fromJsonHook(_unitsProvider: UnitsProvider, _jsonObj: any): Promise<void> { };
+  protected async loadCustomPropsFromJson(_unitsProvider: UnitsProvider, _jsonObj: any): Promise<void> { };
 
   /**
    * Returns a JSON object that contain the specification for this Format.
@@ -456,10 +456,10 @@ export class Format implements FormatProps {
       schemaJson.composite = composite;
     } else { }
 
-    return this.toJsonHook(schemaJson);
+    return this.addCustomPropsToJson(schemaJson);
   }
 
-  protected toJsonHook(schemaJson: { [value: string]: any }) {
+  protected addCustomPropsToJson(schemaJson: { [value: string]: any }) {
     return schemaJson;
   };
 }

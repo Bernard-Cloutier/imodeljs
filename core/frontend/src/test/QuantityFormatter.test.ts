@@ -11,7 +11,7 @@ class MyNewFormatter implements CustomFormatter {
   public formatQuantity(_magnitude: number, spec: FormatterSpec): string {
     if (undefined !== spec)
       return "MyNewFormatter";
-    return `shouldnt get here: spec is undefined: ${undefined !== spec}`;
+    return `shouldn't get here: spec is undefined: ${undefined !== spec}`;
   }
   public parseIntoQuantityValue(_inString: string, _spec: ParserSpec): ParseResult {
     throw new Error("Method not implemented.");
@@ -23,7 +23,7 @@ class MyNewFormat extends Format {
 
   public get myProp(): string { return this._myProp; };
 
-  protected async fromJsonHook(_unitsProvider: UnitsProvider, jsonObj: any): Promise<void> {
+  protected async loadCustomPropsFromJson(_unitsProvider: UnitsProvider, jsonObj: any): Promise<void> {
     if (undefined !== jsonObj.myProp) {
       if (typeof (jsonObj.myProp) !== "string") // MyProp must be a string IF it is defined
         throw new QuantityError(QuantityStatus.InvalidJson, `The Format ${this.name} has an invalid 'MyProp' attribute. It should be of type 'string'.`);
@@ -31,7 +31,7 @@ class MyNewFormat extends Format {
     }
   }
 
-  protected toJsonHook(schemaJson: any) {
+  protected addCustomPropsToJson(schemaJson: any) {
     schemaJson.myProp = this.myProp;
     return schemaJson;
   }
@@ -51,20 +51,20 @@ const defaultFormatProps = {
   formatTraits: ["keepSingleZero", "showUnitLabel"],
   precision: 4,
   type: "Decimal",
-}
+};
 
 const invalidFormatProps = {
   composite: {
     includeZero: "invalid",
   },
-}
+};
 
-describe("Quantity formatter", async () => {
+describe.only("Quantity formatter", async () => {
   let quantityFormatter: QuantityFormatter;
   beforeEach(async () => {
     quantityFormatter = new QuantityFormatter();
     await quantityFormatter.loadFormatAndParsingMaps(true);
-  })
+  });
 
   it("Throws when passing invalid quantity type.", async () => {
     let hasThrown = false;
@@ -97,8 +97,8 @@ describe("Quantity formatter", async () => {
 
   it("Registering new formatter and no format", async () => {
     const expected = "MyNewFormatter";
-    const isRegisterSuccesful = await quantityFormatter.registerCustomQuantityFormatter("newQuantityType", MyNewFormatter);
-    assert.isTrue(isRegisterSuccesful);
+    const isRegisterSuccessful = await quantityFormatter.registerCustomQuantityFormatter("newQuantityType", MyNewFormatter);
+    assert.isTrue(isRegisterSuccessful);
     const newFormatterSpec = await quantityFormatter.getFormatterSpecByQuantityType("newQuantityType");
 
     const actual = quantityFormatter.formatQuantity(0, newFormatterSpec);
@@ -111,9 +111,53 @@ describe("Quantity formatter", async () => {
       ...defaultFormatProps,
       myProp: expected,
     };
-    const isRegisterSuccesful = await quantityFormatter.registerCustomQuantityFormatter("newQuantityType", MyNewFormatter, MyNewFormat, jsonProps);
-    assert.isTrue(isRegisterSuccesful);
+    const isRegisterSuccessful = await quantityFormatter.registerCustomQuantityFormatter("newQuantityType", MyNewFormatter, MyNewFormat, jsonProps);
+    assert.isTrue(isRegisterSuccessful);
     const newFormatterSpec = await quantityFormatter.getFormatterSpecByQuantityType("newQuantityType");
     assert.equal((newFormatterSpec.format as MyNewFormat).myProp, expected);
   });
+
+  it("Registering new length override", async () => {
+    const overrideEntry = {
+      metric: {
+        composite: {
+          includeZero: true,
+          spacer: " ",
+          units: [{ label: "cm", name: "Units.CM" }],
+        },
+        formatTraits: ["keepSingleZero", "showUnitLabel"],
+        precision: 4,
+        type: "Decimal",
+      },
+      imperial: {
+        composite: {
+          includeZero: true,
+          spacer: " ",
+          units: [{ label: "in", name: "Units.IN" }],
+        },
+        formatTraits: ["keepSingleZero", "showUnitLabel"],
+        precision: 4,
+        type: "Decimal",
+      },
+    };
+
+    const metricFormatSpec = await quantityFormatter.getFormatterSpecByQuantityType(QuantityType.Length, false);
+    const metricFormattedValue = quantityFormatter.formatQuantity(1.5, metricFormatSpec);
+    assert.equal(metricFormattedValue, "1.5 m");
+
+    const imperialFormatSpec = await quantityFormatter.getFormatterSpecByQuantityType(QuantityType.Length, true);
+    const imperialFormattedValue = quantityFormatter.formatQuantity(1.5, imperialFormatSpec);
+    assert.equal(imperialFormattedValue, `4'-11"`);
+
+    await quantityFormatter.setOverrideFormats(QuantityType.Length, overrideEntry);
+    const overrideMetricFormatSpec = await quantityFormatter.getFormatterSpecByQuantityType(QuantityType.Length, false);
+    const overrideMetricFormattedValue = quantityFormatter.formatQuantity(1.5, overrideMetricFormatSpec);
+    assert.equal(overrideMetricFormattedValue, "150 cm");
+
+    const overrideImperialFormatSpec = await quantityFormatter.getFormatterSpecByQuantityType(QuantityType.Length, true);
+    const overrideImperialFormattedValue = quantityFormatter.formatQuantity(1.5, overrideImperialFormatSpec);
+    assert.equal(overrideImperialFormattedValue, "59.0551 in");
+  });
+
 });
+
